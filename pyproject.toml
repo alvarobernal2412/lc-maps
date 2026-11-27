@@ -1,6 +1,6 @@
 [project]
 name = "linear-continuous-process-mapper"
-version = "0.1.0"
+version = "0.2.0"
 description = "Linear continuous process maps of event logs as Plotly Sankey figures."
 readme = "README.md"
 license = "MIT"
@@ -25,8 +25,8 @@ dependencies = [
 notebook = ["marimo>=0.21.1", "kaleido>=1.0.0"]
 
 [project.urls]
-Homepage = "https://github.com/aaronkurz/linear-continuous-process-mapper-marimo"
-Repository = "https://github.com/aaronkurz/linear-continuous-process-mapper-marimo"
+Homepage = "https://github.com/alvarobernal2412/lc-maps"
+Repository = "https://github.com/alvarobernal2412/lc-maps"
 
 [dependency-groups]
 dev = [
