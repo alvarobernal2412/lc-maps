@@ -1,9 +1,10 @@
 import networkx as nx
 import plotly.graph_objects as go
 import plotly.express as px
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
-from lcm.constants import EMPTY_TRACE
+from lcm.constants import EMPTY_TRACE, Layout
+from lcm.visualization import trace_layout
 
 
 class SankeyVisualizer:
@@ -12,15 +13,68 @@ class SankeyVisualizer:
     def __init__(self, all_activities=None):
         self.all_activities = all_activities or []
 
-    def create_figure(self, G: nx.MultiDiGraph) -> go.Figure:
+    def create_figure(
+        self,
+        G: nx.MultiDiGraph,
+        traces: Optional[List[dict]] = None,
+        truncated: bool = False,
+        layout: str = Layout.AUTO,
+    ) -> go.Figure:
+        """Draw `G`.
+
+        With `traces` (as `find_traces` returns them) the figure carries them in
+        `data[0].meta["lcm"]`, numbered as the figure numbers its nodes and links.
+        `layout="traces"` also fixes the position of every node (see `relayout`).
+        """
+        layout = Layout(layout)
         if not G.nodes:
             return go.Figure()
 
         data = self._prepare_sankey_data(G)
-        return self._build_figure(data)
+        figure_traces = None
+        if traces is not None:
+            figure_traces = self._map_traces(traces, data)
+        figure = self._build_figure(data)
+        if figure_traces is not None:
+            figure.data[0].meta = {
+                "lcm": {
+                    "traces": figure_traces,
+                    "truncated": truncated,
+                    "layout": layout.value,
+                }
+            }
+            trace_layout.relayout(figure)
+        return figure
+
+    @staticmethod
+    def _map_traces(traces: List[dict], data: Dict[str, Any]) -> List[dict]:
+        """Give each trace the figure's own indexes of its links and nodes."""
+        node_to_idx = data["node_to_idx"]
+        link_of = data["link_of"]
+        mapped = []
+        for trace in traces:
+            links = []
+            nodes = [node_to_idx[trace["root"]]] if trace["root"] in node_to_idx else []
+            for from_state, to_state, activity in trace["steps"]:
+                link = link_of.get((from_state, to_state, activity))
+                if link is not None:
+                    links.append(link)
+                if to_state in node_to_idx:
+                    nodes.append(node_to_idx[to_state])
+            mapped.append(
+                {
+                    "name": trace["name"],
+                    "sequence": trace["sequence"],
+                    "cases": trace["cases"],
+                    "links": links,
+                    "nodes": nodes,
+                }
+            )
+        return mapped
 
     def _prepare_sankey_data(self, G: nx.MultiDiGraph) -> Dict[str, Any]:
         node_to_idx = {}
+        link_of = {}
         nodes_info = []
         node_custom_data = []
 
@@ -86,6 +140,7 @@ class SankeyVisualizer:
             activity = data.get("activity", "Unknown")
             weight = data["weight"]
 
+            link_of[(src, tgt, activity)] = len(sources)
             sources.append(src_idx)
             targets.append(tgt_idx)
             values.append(weight)
@@ -101,11 +156,14 @@ class SankeyVisualizer:
             "link_labels": link_labels,
             "link_colors": link_colors,
             "activity_color_map": activity_color_map,
+            "node_to_idx": node_to_idx,
+            "link_of": link_of,
         }
 
     def _build_figure(self, data: Dict[str, Any]) -> go.Figure:
         node_labels = [n["label"] for n in data["nodes_info"]]
         node_colors = [n["color"] for n in data["nodes_info"]]
+
 
         fig = go.Figure(
             data=[
