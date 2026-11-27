@@ -11,3 +11,10 @@ class MapType(StrEnum):
     SET_BASED = "set_based"
     SEQUENCE_BASED = "sequence_based"
     LAST_ACTIVITY_BASED = "last_activity_based"
+
+
+class Layout(StrEnum):
+    # Plotly places the nodes.
+    AUTO = "auto"
+    # The most frequent trace runs straight along the root's row.
+    TRACES = "traces"

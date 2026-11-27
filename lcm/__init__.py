@@ -6,7 +6,7 @@
 
 import pandas as pd
 
-from lcm.constants import MapType
+from lcm.constants import Layout, MapType
 from lcm.data.data_loader import LOG_SUFFIXES, load_event_log
 from lcm.data.data_processor import DataProcessor
 from lcm.domain.graph_analyzer import GraphAnalyzer
@@ -17,6 +17,7 @@ from lcm.graph_builders import (
 )
 from lcm.services.graph_service import GraphService
 from lcm.services.process_analytics_service import ProcessAnalyticsService
+from lcm.visualization.trace_layout import relayout
 
 __all__ = [
     "LOG_SUFFIXES",

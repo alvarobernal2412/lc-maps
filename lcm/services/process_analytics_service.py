@@ -1,9 +1,12 @@
+import json
+
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 import plotly.graph_objects as go
-from lcm.constants import MapType
+from lcm.constants import Layout, MapType
 from lcm.data.data_processor import DataProcessor
 from lcm.services.graph_service import GraphService
+from lcm.domain import traces as trace_module
 from lcm.domain.graph_analyzer import GraphAnalyzer
 from lcm.visualization.sankey_visualizer import SankeyVisualizer
 
@@ -56,6 +59,8 @@ class ProcessAnalyticsService:
         allow_loops: bool = True,
         visualize_empty_cases: bool = True,
         folds: Optional[Dict[str, List[str]]] = None,
+        layout: str = Layout.AUTO,
+        trace_limit: int = trace_module.TRACE_LIMIT,
     ) -> Tuple[go.Figure, dict]:
         """Draw a process map of the log.
 
@@ -72,14 +77,27 @@ class ProcessAnalyticsService:
                 activities as an "EMPTY TRACE" node.
             folds: Fold name mapped to the activities it replaces, for example
                 {"Rejections": ["Rejected by A", "Rejected by B"]}.
+            layout: "auto" lets Plotly place the nodes; "traces" puts the most
+                frequent trace on one row, along the root's. Without stored
+                traces (`trace_limit=0`) it falls back to "auto".
+            trace_limit: How many of the most frequent traces are stored, in the
+                figure and in the metadata. Each one adds to the size of the
+                figure; 0 stores none.
 
         Returns:
-            The Plotly Sankey figure, and a dict of counts describing the map.
+            The Plotly Sankey figure, and a dict describing the map: counts,
+            the `traces` (most cases first, at most `trace_limit`) and whether they were
+            cut (`traces_truncated`). The figure carries the traces too, in
+            `figure.data[0].meta["lcm"]`.
 
         Raises:
-            ValueError: If `map_type`, `activities` or `folds` are invalid.
+            ValueError: If `map_type`, `activities`, `folds` or `layout` or
+                `trace_limit` (negative) are invalid.
         """
         map_type = MapType(map_type)
+        layout = Layout(layout)
+        if trace_limit < 0:
+            raise ValueError("trace_limit cannot be negative.")
         folds = folds or {}
         selected_activities = self._select_activities(
             activities, self.get_all_activities(folds)
@@ -91,15 +109,39 @@ class ProcessAnalyticsService:
         )
 
         G = self.graph_service.build_graph(variants, map_type, allow_loops=allow_loops)
+        found, truncated = trace_module.find_traces(
+            variants,
+            self.graph_service.graph_builders[map_type],
+            allow_loops,
+            limit=trace_limit,
+        )
         G = self.graph_analyzer.enrich_graph_with_metrics(G)
 
         # Create visualizer with selected activities for legend
         visualizer = SankeyVisualizer(all_activities=selected_activities)
-        return visualizer.create_figure(G), {
+        if trace_limit:
+            figure = visualizer.create_figure(
+                G, found, truncated=truncated, layout=layout
+            )
+        else:
+            figure = visualizer.create_figure(G, layout=Layout.AUTO)
+            if figure.data:
+                figure.data[0].meta = {
+                    "lcm": {"truncated": truncated, "layout": Layout.AUTO.value}
+                }
+        # The figure's traces are plain data, the ones the metadata carries.
+        listed = (
+            json.loads(json.dumps(figure.data[0].meta["lcm"].get("traces", [])))
+            if figure.data
+            else []
+        )
+        return figure, {
             "nodes_leakage_gt_0": G.graph.get("leakage_gt_0_count", 0),
             "terminal_nodes": G.graph.get("terminal_count", 0),
             "total_nodes": G.number_of_nodes(),
             "empty_cases": empty_cases,
+            "traces": listed,
+            "traces_truncated": truncated,
         }
 
     def _select_activities(
