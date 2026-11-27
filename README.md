@@ -99,6 +99,40 @@ last_activity_map
 
 Display the figure directly. Wrapping it in `mo.ui.plotly()` leaves a blank plot, because that wrapper does not support Sankey traces.
 
+## Traces and layout
+
+A trace is a distinct sequence of activities, with the number of cases that follow it. `generate` lists the traces of the map, the most frequent first (ties: the longer one, then by sequence), at most 500:
+
+```python
+figure, metadata = lcm_service.generate(map_type="sequence_based", layout="traces")
+
+metadata["traces"]            # [{"name", "sequence", "cases", "links", "nodes"}, ...]
+metadata["traces_truncated"]  # True when there were more than 500 traces
+```
+
+- `name` is the activities joined with ` → `; the empty trace is `EMPTY TRACE`. If two different sequences would get the same name (only possible when an activity holds ` → ` itself), the later one gets ` (2)`, ` (3)` and so on. `sequence` is the list of activities and is the reliable way to identify a trace.
+- `links` are the links the trace uses, in order, and `nodes` the nodes it passes, starting with the root. Both are numbered as the figure numbers its own links and nodes (their position in `link.source` and `node.label`). A step that is not drawn (a repeated activity with `allow_loops=False`) has no link.
+
+`generate(trace_limit=500)` sets how many of the most frequent traces are stored. Every stored trace adds to the size of the figure (500 traces of a map of 20,000 cases added about 670 KB), so lower it, or use `0` to store none (the layout then falls back to `"auto"`), when figures are kept or sent around; a negative value raises a `ValueError`.
+
+The list is plain data (it can go through `json.dumps`) and the figure carries the same one in `figure.data[0].meta`:
+
+```python
+figure.data[0].meta["lcm"]
+# {"traces": [...], "truncated": bool, "layout": "auto" or "traces"}
+```
+
+`layout` is `"auto"` (Plotly places the nodes) or `"traces"`. With `"traces"` the nodes of the most frequent trace share the top edge of the root, so the trace is a straight band from the root. The other traces are stacked below it, row by row, and the nodes get fixed positions (`node.x`, `node.y`, `arrangement="freeform"` (the nodes stay where they are put and can still be dragged), `pad` of 10 px). Any other value raises a `ValueError`. Traces that were cut at 500 are not laid out as rows; their nodes are placed below the others. A column that does not fit below the common top starts higher, as far as it has to.
+
+The positions depend on the size of the plot area. After changing the height or the margins of the figure, call `lcm.relayout` to place the nodes again:
+
+```python
+figure.update_layout(height=900, margin=dict(l=110, r=10, t=100, b=140))
+lcm.relayout(figure)
+```
+
+It returns the figure. A figure drawn with `layout="auto"` stays as it is. Plotly sizes the nodes of a map with loops or cycles by its own rules, which `relayout` follows only approximately, so the top edges can differ by a few pixels there.
+
 ## Project Structure
 
 
